@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>World Pulse · Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&display=swap" rel="stylesheet">
+<!--
+  Live data, all free & keyless (no sign-up):
+  - Wikipedia edits ........ https://stream.wikimedia.org/v2/stream/recentchange   (Server-Sent Events, real-time)
+  - Bitcoin / Ether price .. wss://ws-feed.exchange.coinbase.com                    (WebSocket, real-time)
+  - Earthquakes ............ https://earthquake.usgs.gov (GeoJSON feed, polled every 60 s)
+  - Weather ................ https://api.open-meteo.com (polled every 10 min)
+  - ISS position ........... https://api.wheretheiss.at (polled every 5 s)
+  - GitHub public activity . https://api.github.com/events (polled every 75 s; 60 requests/hour limit)
+  Host free on GitHub Pages, Netlify or Cloudflare Pages, or just open this file in a browser.
+-->
+<style>
+:root{color-scheme:dark;--bg:#06080b;--panel:#0c1117;--line:#1c2733;--dim:#5d6b7a;--ink:#d7e0ea;--hi:#fff;--ok:#38d98a;--bad:#ff4d63;--warn:#ffb13b;--blue:#4aa8ff;--vio:#b98bff;--cyan:#3be0e0}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.45 "JetBrains Mono",ui-monospace,monospace;overflow-x:clip}
+a{color:var(--blue)}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+h1{font-size:15px;margin:0;color:var(--hi);font-weight:800}
+h1 .live{color:var(--ok);font-weight:400;margin-left:8px}
+h1 .live::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.25}}
+#clock{color:var(--dim)}
+main{display:grid;grid-template-columns:240px 170px minmax(0,1fr);gap:12px;padding:12px 16px}
+.side{display:flex;flex-direction:column;gap:12px}
+.p{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;position:relative;transition:border-color .5s,box-shadow .5s}
+.p h3{margin:0 0 6px;font-size:13px;color:var(--hi);display:flex;justify-content:space-between;gap:6px;align-items:center}
+.p h3 small{color:var(--dim);font-weight:400}
+.big{font-size:32px;font-weight:800;color:var(--hi);line-height:1.1;font-variant-numeric:tabular-nums}
+.mut{color:var(--dim)}
+.cells{display:grid;grid-template-columns:repeat(15,1fr);gap:3px;margin-top:8px}
+.cells i{aspect-ratio:1;border-radius:2px;background:#16202a}
+.log{height:170px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;font-size:12px}
+.log div,.term div,.list div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spine{position:relative;min-height:560px}
+.spine canvas{position:absolute;inset:0;width:100%;height:100%}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-content:start}
+.card.flash{border-color:var(--c);box-shadow:0 0 0 1px var(--c),0 0 22px color-mix(in srgb,var(--c) 25%,transparent)}
+.tag{font-size:11px;padding:1px 7px;border-radius:4px;font-weight:600;background:var(--warn);color:#201400}
+.tag.live{background:var(--ok);color:#03140b}.tag.err{background:var(--bad);color:#fff}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:6px 0}
+.kv span:nth-child(even){text-align:right;color:var(--hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viz{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;min-height:96px}
+.foot{display:flex;justify-content:space-between;gap:8px;color:var(--dim);font-size:11px;border-top:1px solid var(--line);margin-top:8px;padding-top:6px}
+.foot a{color:var(--dim)}
+.bar{height:8px;background:#1a2430;border-radius:4px;margin:3px 0 6px;overflow:hidden}.bar i{display:block;height:100%;border-radius:4px;transition:width .8s}
+.row{display:flex;justify-content:space-between;gap:8px;font-size:12px}
+.row span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+svg.spark,svg.map{width:100%;height:96px;display:block}
+.list{font-size:12px}
+.up{color:var(--ok)}.down{color:var(--bad)}
+select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:2px 4px}
+.status{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:12px}
+.banner{font-size:clamp(15px,2.2vw,22px);font-weight:800;color:var(--warn);padding:4px 0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.term{font-size:12px;background:#030507;border:1px solid var(--line);border-radius:8px;padding:8px 12px;height:100px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+.term .pr{color:var(--ok)}
+@media(max-width:980px){main{grid-template-columns:210px minmax(0,1fr)}.spine{display:none}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){main{grid-template-columns:minmax(0,1fr)}.grid{grid-template-columns:minmax(0,1fr);order:1}.side{order:2}.status{grid-template-columns:minmax(0,1fr)}.log{height:120px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>world / pulse <span class="live">live</span></h1>
+  <span id="clock"></span>
+</header>
+<main>
+  <aside class="side">
+    <section class="p"><h3>events received <small>this session</small></h3><div class="big" id="total">0</div><div class="mut" id="rate">— / sec</div><div class="cells" id="cells"></div><div class="mut" style="margin-top:6px;font-size:11px">last 60 s · brighter = more events</div></section>
+    <section class="p"><h3>sources <small>free · no key</small></h3><div class="list" id="srcs"></div></section>
+    <section class="p"><h3>event log <small>real</small></h3><div class="log" id="log"></div></section>
+  </aside>
+  <div class="spine"><canvas id="cv"></canvas></div>
+  <section class="grid" id="grid"></section>
+  <section class="status">
+    <div class="p"><div class="banner" id="banner">Connecting to live sources…</div><div class="term" id="term"></div></div>
+    <div class="p"><h3>connections <small>live now</small></h3><div class="big" id="conn">0 / 6</div><div class="bar"><i id="connbar" style="width:0%;background:var(--ok)"></i></div><div class="mut">Each panel shows its source. Panels glow when new data lands.</div></div>
+  </section>
+</main>
+<script>
+{
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=(n,d=0)=>Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const ago=t=>{const s=Math.max(0,(Date.now()-t)/1000);return s<60?Math.round(s)+'s ago':s<3600?Math.round(s/60)+'m ago':Math.round(s/3600)+'h ago'};
+
+const SRC=[
+ {id:'wiki',name:'wikipedia-edits',c:'#4aa8ff',url:'https://stream.wikimedia.org/',host:'stream.wikimedia.org',how:'SSE stream'},
+ {id:'btc',name:'crypto-ticker',c:'#ffb13b',url:'https://docs.cdp.coinbase.com/exchange/websocket-feed/overview',host:'ws-feed.exchange.coinbase.com',how:'WebSocket'},
+ {id:'quake',name:'earthquakes',c:'#ff4d63',url:'https://earthquake.usgs.gov/earthquakes/feed/',host:'earthquake.usgs.gov',how:'poll 60s'},
+ {id:'wx',name:'weather',c:'#3be0e0',url:'https://open-meteo.com/',host:'api.open-meteo.com',how:'poll 10m'},
+ {id:'iss',name:'iss-position',c:'#b98bff',url:'https://wheretheiss.at/',host:'api.wheretheiss.at',how:'poll 5s'},
+ {id:'gh',name:'github-activity',c:'#38d98a',url:'https://docs.github.com/en/rest/activity/events',host:'api.github.com',how:'poll 75s'}
+];
+const idx=Object.fromEntries(SRC.map((s,i)=>[s.id,i]));
+$('grid').innerHTML=SRC.map(s=>`<article class="p card" id="c-${s.id}" style="--c:${s.c}">
+ <h3><span style="color:${s.c}">${s.name}</span><span class="tag" id="t-${s.id}">connecting</span></h3>
+ <div id="b-${s.id}"><div class="mut">waiting for first data…</div></div>
+ <div class="foot"><a href="${s.url}" target="_blank" rel="noopener">${s.host}</a><span id="u-${s.id}">${s.how}</span></div></article>`).join('');
+$('srcs').innerHTML=SRC.map(s=>`<div><span style="color:${s.c}">●</span> <a href="${s.url}" target="_blank" rel="noopener">${s.host}</a></div>`).join('');
+$('cells').innerHTML='<i></i>'.repeat(60);
+
+/* ---------- shared plumbing ---------- */
+let total=0;const buckets=new Array(60).fill(0);const status={};
+function setStatus(id,s){status[id]=s;const t=$('t-'+id);t.className='tag '+(s==='live'?'live':s==='error'?'err':'');t.textContent=s;
+ const n=Object.values(status).filter(v=>v==='live').length;$('conn').textContent=n+' / 6';$('connbar').style.width=(n/6*100)+'%'}
+const flashT={};
+function hit(id,logText,termText){
+ total++;buckets[59]++;
+ const c=$('c-'+id);c.classList.add('flash');clearTimeout(flashT[id]);flashT[id]=setTimeout(()=>c.classList.remove('flash'),700);
+ fire(idx[id]);
+ if(logText)addLine('log',logText,SRC[idx[id]].c,14);
+ if(termText)addLine('term',termText,null,6);
+}
+function addLine(box,text,color,max){const d=document.createElement('div');
+ if(box==='term'){const p=document.createElement('span');p.className='pr';p.textContent='❯ ';d.append(p,text)}else{d.textContent=text;d.style.color=color}
+ const el=$(box);el.append(d);while(el.children.length>max)el.firstChild.remove()}
+function banner(text,color){$('banner').textContent=text;$('banner').style.color=color}
+setInterval(()=>{
+ const max=Math.max(5,...buckets);
+ [...$('cells').children].forEach((c,i)=>{const v=buckets[i]/max;c.style.background=v?`rgba(56,217,138,${.15+v*.85})`:'#16202a'});
+ $('rate').textContent=buckets[59]+' / sec now';buckets.shift();buckets.push(0);
+ $('total').textContent=fmt(total);$('clock').textContent=new Date().toLocaleString();
+},1000);
+async function getJSON(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
+function poll(id,ms,fn){const run=async()=>{try{await fn();setStatus(id,'live')}catch(e){setStatus(id,'error');$('u-'+id).textContent=e.message.slice(0,40)}};run();setInterval(run,ms)}
+function spark(vals,color){if(vals.length<2)return'';const mn=Math.min(...vals),mx=Math.max(...vals),r=mx-mn||1;
+ const pts=vals.map((v,i)=>`${(i/(vals.length-1)*300).toFixed(1)},${(90-(v-mn)/r*80).toFixed(1)}`).join(' ');
+ return`<svg class="spark" viewBox="0 0 300 96" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`}
+
+/* ---------- 1. Wikipedia live edits (SSE) ---------- */
+{
+ const times=[],wikis={};let last=0,lastLog=0,n=0;
+ const draw=()=>{const now=Date.now();while(times.length&&times[0]<now-60000)times.shift();
+  const top=Object.entries(wikis).sort((a,b)=>b[1]-a[1]).slice(0,4),mx=top[0]?.[1]||1;
+  $('b-wiki').innerHTML=`<div class="big">${fmt(times.length)}</div><div class="mut">edits in the last minute · all wikis</div>
+  <div class="viz">${top.map(([w,c])=>`<div class="row"><span>${esc(w)}</span><span>${fmt(c)}</span></div><div class="bar"><i style="width:${c/mx*100}%;background:#4aa8ff"></i></div>`).join('')}</div>`};
+ const connect=()=>{
+  const es=new EventSource('https://stream.wikimedia.org/v2/stream/recentchange');
+  es.onopen=()=>setStatus('wiki','live');
+  es.onerror=()=>setStatus('wiki','connecting');
+  es.onmessage=e=>{let d;try{d=JSON.parse(e.data)}catch{return}
+   if(d.meta?.domain==='canary')return;
+   times.push(Date.now());const w=d.server_name||d.wiki||'?';wikis[w]=(wikis[w]||0)+1;n++;
+   const now=Date.now();
+   if(now-lastLog>900&&d.type==='edit'&&!d.bot){lastLog=now;hit('wiki',`✎ ${w.replace('.wikipedia.org','')} · ${d.title}`,`edit ${w} "${d.title}" by ${d.user}`)}
+   else if(n%4===0){total++;buckets[59]++;fire(0)}else{total++;buckets[59]++}
+   if(now-last>1000){last=now;draw()}};
+ };
+ connect();
+}
+
+/* ---------- 2. Coinbase live ticker (WebSocket) ---------- */
+{
+ const P={'BTC-USD':{h:[]},'ETH-USD':{h:[]}};let lastHit=0;
+ const draw=()=>{const b=P['BTC-USD'],e=P['ETH-USD'];if(!b.price)return;
+  const ch=(x)=>x.open?((x.price-x.open)/x.open*100):0,cb=ch(b),ce=ch(e);
+  $('b-btc').innerHTML=`<div class="big">$${fmt(b.price,2)}</div><div class="mut">BTC-USD · <span class="${cb>=0?'up':'down'}">${cb>=0?'▲':'▼'} ${fmt(Math.abs(cb),2)}% 24h</span></div>
+  <div class="kv"><span>ETH-USD</span><span>$${e.price?fmt(e.price,2):'—'} <span class="${ce>=0?'up':'down'}">${e.price?(ce>=0?'+':'')+fmt(ce,2)+'%':''}</span></span><span>24h vol</span><span>${b.vol?fmt(b.vol,0)+' BTC':'—'}</span></div>
+  <div class="viz" style="min-height:0">${spark(b.h,'#ffb13b')}</div>`};
+ const connect=()=>{
+  const ws=new WebSocket('wss://ws-feed.exchange.coinbase.com');
+  ws.onopen=()=>{ws.send(JSON.stringify({type:'subscribe',product_ids:Object.keys(P),channels:['ticker']}));setStatus('btc','live')};
+  ws.onmessage=m=>{let d;try{d=JSON.parse(m.data)}catch{return}if(d.type!=='ticker'||!P[d.product_id])return;
+   const x=P[d.product_id];x.price=+d.price;x.open=+d.open_24h;x.vol=+d.volume_24h;x.h.push(x.price);if(x.h.length>120)x.h.shift();
+   total++;buckets[59]++;const now=Date.now();
+   if(d.product_id==='BTC-USD'&&now-lastHit>2500){lastHit=now;hit('btc',`₿ ${d.side==='buy'?'buy':'sell'} ${(+d.last_size).toFixed(4)} BTC @ $${fmt(d.price,2)}`,`ticker BTC-USD ${d.price} size ${d.last_size}`)}
+   draw()};
+  ws.onclose=()=>{setStatus('btc','connecting');setTimeout(connect,4000)};
+  ws.onerror=()=>setStatus('btc','error');
+ };
+ connect();
+}
+
+/* ---------- 3. USGS earthquakes ---------- */
+{
+ const seen=new Set();let first=true;
+ poll('quake',60000,async()=>{
+  const j=await getJSON('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson');
+  const f=j.features.filter(x=>x.properties.mag!=null);
+  const big=f.reduce((a,b)=>b.properties.mag>(a?.properties.mag??-9)?b:a,null);
+  const hour=f.filter(x=>x.properties.time>Date.now()-3600000).length;
+  $('b-quake').innerHTML=`<div class="big">${fmt(f.length)}</div><div class="mut">quakes in the last 24 h · ${hour} in the last hour</div>
+  <div class="kv"><span>largest</span><span>M${big?big.properties.mag.toFixed(1):'—'} ${esc(big?.properties.place||'')}</span></div>
+  <div class="viz list">${f.slice(0,4).map(x=>`<div><span style="color:${x.properties.mag>=4.5?'#ff4d63':'#ffb13b'}">M${x.properties.mag.toFixed(1)}</span> ${esc(x.properties.place)} · ${ago(x.properties.time)}</div>`).join('')}</div>`;
+  for(const x of f.slice().reverse()){if(seen.has(x.id))continue;seen.add(x.id);
+   if(!first){hit('quake',`⚠ M${x.properties.mag.toFixed(1)} ${x.properties.place}`,`usgs ${x.id} M${x.properties.mag} ${x.properties.place}`);
+    if(x.properties.mag>=4.5)banner(`QUAKE · M${x.properties.mag.toFixed(1)} · ${x.properties.place}`,'#ff4d63')}}
+  if(first&&big){banner(`LARGEST QUAKE 24H · M${big.properties.mag.toFixed(1)} · ${big.properties.place}`,'#ff4d63');hit('quake',`⚠ loaded ${f.length} quakes (24h)`,`GET all_day.geojson → ${f.length} features`)}
+  first=false;
+ });
+}
+
+/* ---------- 4. Open-Meteo weather ---------- */
+{
+ const CITIES={Tokyo:[35.68,139.69],London:[51.51,-0.13],'New York':[40.71,-74.01],Sydney:[-33.87,151.21],'São Paulo':[-23.55,-46.63]};
+ let city='Tokyo';
+ const WMO={0:'clear',1:'mostly clear',2:'partly cloudy',3:'overcast',45:'fog',48:'fog',51:'drizzle',53:'drizzle',55:'drizzle',61:'rain',63:'rain',65:'heavy rain',71:'snow',73:'snow',75:'heavy snow',80:'showers',81:'showers',82:'heavy showers',95:'thunderstorm',96:'thunderstorm',99:'thunderstorm'};
+ const load=async()=>{const [la,lo]=CITIES[city];
+  const j=await getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&hourly=temperature_2m&forecast_days=1&timezone=auto`);
+  const c=j.current;
+  $('b-wx').innerHTML=`<div class="row"><span class="mut">city</span><select id="city">${Object.keys(CITIES).map(k=>`<option${k===city?' selected':''}>${k}</option>`).join('')}</select></div>
+  <div class="big">${fmt(c.temperature_2m,1)}°C</div><div class="mut">${WMO[c.weather_code]||'code '+c.weather_code} · local ${esc(c.time.slice(11))}</div>
+  <div class="kv"><span>humidity</span><span>${c.relative_humidity_2m}%</span><span>wind</span><span>${fmt(c.wind_speed_10m,1)} km/h</span></div>
+  <div class="viz" style="min-height:0"><div class="mut" style="font-size:11px">today, hourly °C</div>${spark(j.hourly.temperature_2m,'#3be0e0')}</div>`;
+  $('city').onchange=e=>{city=e.target.value;load().then(()=>setStatus('wx','live')).catch(()=>setStatus('wx','error'))};
+  hit('wx',`☁ ${city} ${c.temperature_2m}°C ${WMO[c.weather_code]||''}`,`open-meteo ${city} t=${c.temperature_2m} rh=${c.relative_humidity_2m}`)};
+ poll('wx',600000,load);
+}
+
+/* ---------- 5. ISS position ---------- */
+{
+ const trail=[];let n=0;
+ poll('iss',5000,async()=>{
+  const d=await getJSON('https://api.wheretheiss.at/v1/satellites/25544');
+  trail.push([d.longitude,d.latitude]);if(trail.length>240)trail.shift();
+  const X=lo=>(lo+180)/360*300,Y=la=>(90-la)/180*96;
+  let path='',prev=null;for(const [lo,la] of trail){path+=(prev!==null&&Math.abs(lo-prev)>180?'M':path?'L':'M')+X(lo).toFixed(1)+' '+Y(la).toFixed(1);prev=lo}
+  const grid=[...Array(11)].map((_,i)=>`<line x1="${i*30}" y1="0" x2="${i*30}" y2="96" stroke="#1c2733"/>`).join('')+[...Array(5)].map((_,i)=>`<line x1="0" y1="${i*24}" x2="300" y2="${i*24}" stroke="#1c2733"/>`).join('');
+  $('b-iss').innerHTML=`<div class="kv"><span>lat / lon</span><span>${fmt(d.latitude,2)}°, ${fmt(d.longitude,2)}°</span><span>altitude</span><span>${fmt(d.altitude,1)} km</span><span>speed</span><span>${fmt(d.velocity,0)} km/h</span><span>side</span><span>${esc(d.visibility)}</span></div>
+  <div class="viz" style="min-height:0"><svg class="map" viewBox="0 0 300 96" preserveAspectRatio="none">${grid}<line x1="0" y1="48" x2="300" y2="48" stroke="#2a3846"/><path d="${path}" fill="none" stroke="#b98bff" stroke-width="1.5" vector-effect="non-scaling-stroke" opacity=".7"/><circle cx="${X(d.longitude)}" cy="${Y(d.latitude)}" r="4" fill="#b98bff"/></svg><div class="mut" style="font-size:11px">trail since page opened · equirectangular grid</div></div>`;
+  if(n++%6===0)hit('iss',`🛰 ISS ${fmt(d.latitude,1)}°, ${fmt(d.longitude,1)}°`,`wheretheiss 25544 lat=${d.latitude.toFixed(3)} lon=${d.longitude.toFixed(3)}`);
+  else{total++;buckets[59]++;fire(4)}
+ });
+}
+
+/* ---------- 6. GitHub public events ---------- */
+{
+ const seen=new Set(),types={};
+ poll('gh',75000,async()=>{
+  const r=await fetch('https://api.github.com/events?per_page=100',{cache:'no-store'});
+  if(r.status===403)throw new Error('rate limit, retry soon');if(!r.ok)throw new Error('HTTP '+r.status);
+  const ev=await r.json();let fresh=[];
+  for(const e of ev){if(seen.has(e.id))continue;seen.add(e.id);fresh.push(e);const t=e.type.replace('Event','');types[t]=(types[t]||0)+1}
+  const top=Object.entries(types).sort((a,b)=>b[1]-a[1]).slice(0,4),mx=top[0]?.[1]||1;
+  $('b-gh').innerHTML=`<div class="big">${fmt(seen.size)}</div><div class="mut">public events seen · left ${esc(r.headers.get('x-ratelimit-remaining')??'?')} calls/hr</div>
+  <div class="viz">${top.map(([t,c])=>`<div class="row"><span>${esc(t)}</span><span>${c}</span></div><div class="bar"><i style="width:${c/mx*100}%;background:#38d98a"></i></div>`).join('')}</div>`;
+  fresh.slice(0,8).forEach((e,i)=>setTimeout(()=>hit('gh',`⌥ ${e.type.replace('Event','')} · ${e.repo.name}`,`github ${e.type} ${e.repo.name} by ${e.actor.login}`),i*1800));
+ });
+}
+
+/* ---------- wiring spine (particles = real events) ---------- */
+const cv=$('cv'),ctx=cv.getContext('2d'),cards=SRC.map(s=>$('c-'+s.id));
+let W=0,H=0,nodes=[],wires=[],parts=[];
+function build(){
+ const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.width)return;W=r.width;H=r.height;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0);
+ nodes=[];for(let y=14;y<H-10;y+=22)nodes.push({x:28,y,n:Math.floor(Math.random()*999),lit:0});
+ wires=SRC.map((s,ci)=>{const cr=cards[ci].getBoundingClientRect();return[0,1,2,3,4].map(()=>({n:nodes[Math.floor(Math.random()*nodes.length)],ci,ty:Math.max(10,Math.min(H-10,cr.top-r.top+cr.height*(.15+Math.random()*.7)))}))});
+}
+function fire(ci){if(!wires.length||parts.length>220)return;const w=wires[ci][Math.floor(Math.random()*wires[ci].length)];w.n.lit=1;w.n.n=Math.floor(Math.random()*999);parts.push({w,p:0,v:.012+Math.random()*.01})}
+function draw(){
+ if(W){ctx.clearRect(0,0,W,H);ctx.strokeStyle='#1c2733';ctx.beginPath();ctx.moveTo(28,0);ctx.lineTo(28,H);ctx.stroke();
+ for(const g of wires)for(const w of g){ctx.strokeStyle=SRC[w.ci].c+'30';ctx.beginPath();ctx.moveTo(48,w.n.y);ctx.bezierCurveTo(W*.55,w.n.y,W*.55,w.ty,W,w.ty);ctx.stroke()}
+ ctx.font='9px JetBrains Mono, monospace';ctx.textAlign='center';ctx.textBaseline='middle';
+ for(const n of nodes){n.lit*=.96;ctx.fillStyle=n.lit>.1?`rgba(56,217,138,${n.lit})`:'#0c1117';ctx.strokeStyle='#2a3846';ctx.fillRect(10,n.y-7,36,14);ctx.strokeRect(10.5,n.y-6.5,35,13);ctx.fillStyle=n.lit>.5?'#03140b':'#8aa0b4';ctx.fillText(n.n,28,n.y)}
+ parts=parts.filter(p=>(p.p+=p.v)<1);
+ for(const p of parts){const w=p.w,u=p.p,c1=W*.55,y0=w.n.y,y3=w.ty;
+  const x=(1-u)**3*48+3*(1-u)**2*u*c1+3*(1-u)*u**2*c1+u**3*W,y=(1-u)**3*y0+3*(1-u)**2*u*y0+3*(1-u)*u**2*y3+u**3*y3;
+  ctx.fillStyle=SRC[w.ci].c;ctx.beginPath();ctx.arc(x,y,1.8,0,7);ctx.fill()}}
+ requestAnimationFrame(draw);
+}
+const ro=new ResizeObserver(build);ro.observe(cv.parentElement);ro.observe($('grid'));
+requestAnimationFrame(draw);
+}
+</script>
+</body>
+</html>
