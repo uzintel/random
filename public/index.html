@@ -1,6 +1,4 @@
-// Cloudflare Worker: serves the World Pulse live dashboard.
-// Paste this whole file into the Worker editor (replace everything), then click Deploy.
-const HTML = `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -101,11 +99,11 @@ const SRC=[
  {id:'gh',name:'github-activity',c:'#38d98a',url:'https://docs.github.com/en/rest/activity/events',host:'api.github.com',how:'poll 75s'}
 ];
 const idx=Object.fromEntries(SRC.map((s,i)=>[s.id,i]));
-$('grid').innerHTML=SRC.map(s=>\`<article class="p card" id="c-\${s.id}" style="--c:\${s.c}">
- <h3><span style="color:\${s.c}">\${s.name}</span><span class="tag" id="t-\${s.id}">connecting</span></h3>
- <div id="b-\${s.id}"><div class="mut">waiting for first data…</div></div>
- <div class="foot"><a href="\${s.url}" target="_blank" rel="noopener">\${s.host}</a><span id="u-\${s.id}">\${s.how}</span></div></article>\`).join('');
-$('srcs').innerHTML=SRC.map(s=>\`<div><span style="color:\${s.c}">●</span> <a href="\${s.url}" target="_blank" rel="noopener">\${s.host}</a></div>\`).join('');
+$('grid').innerHTML=SRC.map(s=>`<article class="p card" id="c-${s.id}" style="--c:${s.c}">
+ <h3><span style="color:${s.c}">${s.name}</span><span class="tag" id="t-${s.id}">connecting</span></h3>
+ <div id="b-${s.id}"><div class="mut">waiting for first data…</div></div>
+ <div class="foot"><a href="${s.url}" target="_blank" rel="noopener">${s.host}</a><span id="u-${s.id}">${s.how}</span></div></article>`).join('');
+$('srcs').innerHTML=SRC.map(s=>`<div><span style="color:${s.c}">●</span> <a href="${s.url}" target="_blank" rel="noopener">${s.host}</a></div>`).join('');
 $('cells').innerHTML='<i></i>'.repeat(60);
 
 /* ---------- shared plumbing ---------- */
@@ -126,23 +124,23 @@ function addLine(box,text,color,max){const d=document.createElement('div');
 function banner(text,color){$('banner').textContent=text;$('banner').style.color=color}
 setInterval(()=>{
  const max=Math.max(5,...buckets);
- [...$('cells').children].forEach((c,i)=>{const v=buckets[i]/max;c.style.background=v?\`rgba(56,217,138,\${.15+v*.85})\`:'#16202a'});
+ [...$('cells').children].forEach((c,i)=>{const v=buckets[i]/max;c.style.background=v?`rgba(56,217,138,${.15+v*.85})`:'#16202a'});
  $('rate').textContent=buckets[59]+' / sec now';buckets.shift();buckets.push(0);
  $('total').textContent=fmt(total);$('clock').textContent=new Date().toLocaleString();
 },1000);
 async function getJSON(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
 function poll(id,ms,fn){const run=async()=>{try{await fn();setStatus(id,'live')}catch(e){setStatus(id,'error');$('u-'+id).textContent=e.message.slice(0,40)}};run();setInterval(run,ms)}
 function spark(vals,color){if(vals.length<2)return'';const mn=Math.min(...vals),mx=Math.max(...vals),r=mx-mn||1;
- const pts=vals.map((v,i)=>\`\${(i/(vals.length-1)*300).toFixed(1)},\${(90-(v-mn)/r*80).toFixed(1)}\`).join(' ');
- return\`<svg class="spark" viewBox="0 0 300 96" preserveAspectRatio="none"><polyline points="\${pts}" fill="none" stroke="\${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>\`}
+ const pts=vals.map((v,i)=>`${(i/(vals.length-1)*300).toFixed(1)},${(90-(v-mn)/r*80).toFixed(1)}`).join(' ');
+ return`<svg class="spark" viewBox="0 0 300 96" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`}
 
 /* ---------- 1. Wikipedia live edits (SSE) ---------- */
 {
  const times=[],wikis={};let last=0,lastLog=0,n=0;
  const draw=()=>{const now=Date.now();while(times.length&&times[0]<now-60000)times.shift();
   const top=Object.entries(wikis).sort((a,b)=>b[1]-a[1]).slice(0,4),mx=top[0]?.[1]||1;
-  $('b-wiki').innerHTML=\`<div class="big">\${fmt(times.length)}</div><div class="mut">edits in the last minute · all wikis</div>
-  <div class="viz">\${top.map(([w,c])=>\`<div class="row"><span>\${esc(w)}</span><span>\${fmt(c)}</span></div><div class="bar"><i style="width:\${c/mx*100}%;background:#4aa8ff"></i></div>\`).join('')}</div>\`};
+  $('b-wiki').innerHTML=`<div class="big">${fmt(times.length)}</div><div class="mut">edits in the last minute · all wikis</div>
+  <div class="viz">${top.map(([w,c])=>`<div class="row"><span>${esc(w)}</span><span>${fmt(c)}</span></div><div class="bar"><i style="width:${c/mx*100}%;background:#4aa8ff"></i></div>`).join('')}</div>`};
  const connect=()=>{
   const es=new EventSource('https://stream.wikimedia.org/v2/stream/recentchange');
   es.onopen=()=>setStatus('wiki','live');
@@ -151,7 +149,7 @@ function spark(vals,color){if(vals.length<2)return'';const mn=Math.min(...vals),
    if(d.meta?.domain==='canary')return;
    times.push(Date.now());const w=d.server_name||d.wiki||'?';wikis[w]=(wikis[w]||0)+1;n++;
    const now=Date.now();
-   if(now-lastLog>900&&d.type==='edit'&&!d.bot){lastLog=now;hit('wiki',\`✎ \${w.replace('.wikipedia.org','')} · \${d.title}\`,\`edit \${w} "\${d.title}" by \${d.user}\`)}
+   if(now-lastLog>900&&d.type==='edit'&&!d.bot){lastLog=now;hit('wiki',`✎ ${w.replace('.wikipedia.org','')} · ${d.title}`,`edit ${w} "${d.title}" by ${d.user}`)}
    else if(n%4===0){total++;buckets[59]++;fire(0)}else{total++;buckets[59]++}
    if(now-last>1000){last=now;draw()}};
  };
@@ -163,16 +161,16 @@ function spark(vals,color){if(vals.length<2)return'';const mn=Math.min(...vals),
  const P={'BTC-USD':{h:[]},'ETH-USD':{h:[]}};let lastHit=0;
  const draw=()=>{const b=P['BTC-USD'],e=P['ETH-USD'];if(!b.price)return;
   const ch=(x)=>x.open?((x.price-x.open)/x.open*100):0,cb=ch(b),ce=ch(e);
-  $('b-btc').innerHTML=\`<div class="big">$\${fmt(b.price,2)}</div><div class="mut">BTC-USD · <span class="\${cb>=0?'up':'down'}">\${cb>=0?'▲':'▼'} \${fmt(Math.abs(cb),2)}% 24h</span></div>
-  <div class="kv"><span>ETH-USD</span><span>$\${e.price?fmt(e.price,2):'—'} <span class="\${ce>=0?'up':'down'}">\${e.price?(ce>=0?'+':'')+fmt(ce,2)+'%':''}</span></span><span>24h vol</span><span>\${b.vol?fmt(b.vol,0)+' BTC':'—'}</span></div>
-  <div class="viz" style="min-height:0">\${spark(b.h,'#ffb13b')}</div>\`};
+  $('b-btc').innerHTML=`<div class="big">$${fmt(b.price,2)}</div><div class="mut">BTC-USD · <span class="${cb>=0?'up':'down'}">${cb>=0?'▲':'▼'} ${fmt(Math.abs(cb),2)}% 24h</span></div>
+  <div class="kv"><span>ETH-USD</span><span>$${e.price?fmt(e.price,2):'—'} <span class="${ce>=0?'up':'down'}">${e.price?(ce>=0?'+':'')+fmt(ce,2)+'%':''}</span></span><span>24h vol</span><span>${b.vol?fmt(b.vol,0)+' BTC':'—'}</span></div>
+  <div class="viz" style="min-height:0">${spark(b.h,'#ffb13b')}</div>`};
  const connect=()=>{
   const ws=new WebSocket('wss://ws-feed.exchange.coinbase.com');
   ws.onopen=()=>{ws.send(JSON.stringify({type:'subscribe',product_ids:Object.keys(P),channels:['ticker']}));setStatus('btc','live')};
   ws.onmessage=m=>{let d;try{d=JSON.parse(m.data)}catch{return}if(d.type!=='ticker'||!P[d.product_id])return;
    const x=P[d.product_id];x.price=+d.price;x.open=+d.open_24h;x.vol=+d.volume_24h;x.h.push(x.price);if(x.h.length>120)x.h.shift();
    total++;buckets[59]++;const now=Date.now();
-   if(d.product_id==='BTC-USD'&&now-lastHit>2500){lastHit=now;hit('btc',\`₿ \${d.side==='buy'?'buy':'sell'} \${(+d.last_size).toFixed(4)} BTC @ $\${fmt(d.price,2)}\`,\`ticker BTC-USD \${d.price} size \${d.last_size}\`)}
+   if(d.product_id==='BTC-USD'&&now-lastHit>2500){lastHit=now;hit('btc',`₿ ${d.side==='buy'?'buy':'sell'} ${(+d.last_size).toFixed(4)} BTC @ $${fmt(d.price,2)}`,`ticker BTC-USD ${d.price} size ${d.last_size}`)}
    draw()};
   ws.onclose=()=>{setStatus('btc','connecting');setTimeout(connect,4000)};
   ws.onerror=()=>setStatus('btc','error');
@@ -188,13 +186,13 @@ function spark(vals,color){if(vals.length<2)return'';const mn=Math.min(...vals),
   const f=j.features.filter(x=>x.properties.mag!=null);
   const big=f.reduce((a,b)=>b.properties.mag>(a?.properties.mag??-9)?b:a,null);
   const hour=f.filter(x=>x.properties.time>Date.now()-3600000).length;
-  $('b-quake').innerHTML=\`<div class="big">\${fmt(f.length)}</div><div class="mut">quakes in the last 24 h · \${hour} in the last hour</div>
-  <div class="kv"><span>largest</span><span>M\${big?big.properties.mag.toFixed(1):'—'} \${esc(big?.properties.place||'')}</span></div>
-  <div class="viz list">\${f.slice(0,4).map(x=>\`<div><span style="color:\${x.properties.mag>=4.5?'#ff4d63':'#ffb13b'}">M\${x.properties.mag.toFixed(1)}</span> \${esc(x.properties.place)} · \${ago(x.properties.time)}</div>\`).join('')}</div>\`;
+  $('b-quake').innerHTML=`<div class="big">${fmt(f.length)}</div><div class="mut">quakes in the last 24 h · ${hour} in the last hour</div>
+  <div class="kv"><span>largest</span><span>M${big?big.properties.mag.toFixed(1):'—'} ${esc(big?.properties.place||'')}</span></div>
+  <div class="viz list">${f.slice(0,4).map(x=>`<div><span style="color:${x.properties.mag>=4.5?'#ff4d63':'#ffb13b'}">M${x.properties.mag.toFixed(1)}</span> ${esc(x.properties.place)} · ${ago(x.properties.time)}</div>`).join('')}</div>`;
   for(const x of f.slice().reverse()){if(seen.has(x.id))continue;seen.add(x.id);
-   if(!first){hit('quake',\`⚠ M\${x.properties.mag.toFixed(1)} \${x.properties.place}\`,\`usgs \${x.id} M\${x.properties.mag} \${x.properties.place}\`);
-    if(x.properties.mag>=4.5)banner(\`QUAKE · M\${x.properties.mag.toFixed(1)} · \${x.properties.place}\`,'#ff4d63')}}
-  if(first&&big){banner(\`LARGEST QUAKE 24H · M\${big.properties.mag.toFixed(1)} · \${big.properties.place}\`,'#ff4d63');hit('quake',\`⚠ loaded \${f.length} quakes (24h)\`,\`GET all_day.geojson → \${f.length} features\`)}
+   if(!first){hit('quake',`⚠ M${x.properties.mag.toFixed(1)} ${x.properties.place}`,`usgs ${x.id} M${x.properties.mag} ${x.properties.place}`);
+    if(x.properties.mag>=4.5)banner(`QUAKE · M${x.properties.mag.toFixed(1)} · ${x.properties.place}`,'#ff4d63')}}
+  if(first&&big){banner(`LARGEST QUAKE 24H · M${big.properties.mag.toFixed(1)} · ${big.properties.place}`,'#ff4d63');hit('quake',`⚠ loaded ${f.length} quakes (24h)`,`GET all_day.geojson → ${f.length} features`)}
   first=false;
  });
 }
@@ -205,14 +203,14 @@ function spark(vals,color){if(vals.length<2)return'';const mn=Math.min(...vals),
  let city='Tokyo';
  const WMO={0:'clear',1:'mostly clear',2:'partly cloudy',3:'overcast',45:'fog',48:'fog',51:'drizzle',53:'drizzle',55:'drizzle',61:'rain',63:'rain',65:'heavy rain',71:'snow',73:'snow',75:'heavy snow',80:'showers',81:'showers',82:'heavy showers',95:'thunderstorm',96:'thunderstorm',99:'thunderstorm'};
  const load=async()=>{const [la,lo]=CITIES[city];
-  const j=await getJSON(\`https://api.open-meteo.com/v1/forecast?latitude=\${la}&longitude=\${lo}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&hourly=temperature_2m&forecast_days=1&timezone=auto\`);
+  const j=await getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&hourly=temperature_2m&forecast_days=1&timezone=auto`);
   const c=j.current;
-  $('b-wx').innerHTML=\`<div class="row"><span class="mut">city</span><select id="city">\${Object.keys(CITIES).map(k=>\`<option\${k===city?' selected':''}>\${k}</option>\`).join('')}</select></div>
-  <div class="big">\${fmt(c.temperature_2m,1)}°C</div><div class="mut">\${WMO[c.weather_code]||'code '+c.weather_code} · local \${esc(c.time.slice(11))}</div>
-  <div class="kv"><span>humidity</span><span>\${c.relative_humidity_2m}%</span><span>wind</span><span>\${fmt(c.wind_speed_10m,1)} km/h</span></div>
-  <div class="viz" style="min-height:0"><div class="mut" style="font-size:11px">today, hourly °C</div>\${spark(j.hourly.temperature_2m,'#3be0e0')}</div>\`;
+  $('b-wx').innerHTML=`<div class="row"><span class="mut">city</span><select id="city">${Object.keys(CITIES).map(k=>`<option${k===city?' selected':''}>${k}</option>`).join('')}</select></div>
+  <div class="big">${fmt(c.temperature_2m,1)}°C</div><div class="mut">${WMO[c.weather_code]||'code '+c.weather_code} · local ${esc(c.time.slice(11))}</div>
+  <div class="kv"><span>humidity</span><span>${c.relative_humidity_2m}%</span><span>wind</span><span>${fmt(c.wind_speed_10m,1)} km/h</span></div>
+  <div class="viz" style="min-height:0"><div class="mut" style="font-size:11px">today, hourly °C</div>${spark(j.hourly.temperature_2m,'#3be0e0')}</div>`;
   $('city').onchange=e=>{city=e.target.value;load().then(()=>setStatus('wx','live')).catch(()=>setStatus('wx','error'))};
-  hit('wx',\`☁ \${city} \${c.temperature_2m}°C \${WMO[c.weather_code]||''}\`,\`open-meteo \${city} t=\${c.temperature_2m} rh=\${c.relative_humidity_2m}\`)};
+  hit('wx',`☁ ${city} ${c.temperature_2m}°C ${WMO[c.weather_code]||''}`,`open-meteo ${city} t=${c.temperature_2m} rh=${c.relative_humidity_2m}`)};
  poll('wx',600000,load);
 }
 
@@ -224,10 +222,10 @@ function spark(vals,color){if(vals.length<2)return'';const mn=Math.min(...vals),
   trail.push([d.longitude,d.latitude]);if(trail.length>240)trail.shift();
   const X=lo=>(lo+180)/360*300,Y=la=>(90-la)/180*96;
   let path='',prev=null;for(const [lo,la] of trail){path+=(prev!==null&&Math.abs(lo-prev)>180?'M':path?'L':'M')+X(lo).toFixed(1)+' '+Y(la).toFixed(1);prev=lo}
-  const grid=[...Array(11)].map((_,i)=>\`<line x1="\${i*30}" y1="0" x2="\${i*30}" y2="96" stroke="#1c2733"/>\`).join('')+[...Array(5)].map((_,i)=>\`<line x1="0" y1="\${i*24}" x2="300" y2="\${i*24}" stroke="#1c2733"/>\`).join('');
-  $('b-iss').innerHTML=\`<div class="kv"><span>lat / lon</span><span>\${fmt(d.latitude,2)}°, \${fmt(d.longitude,2)}°</span><span>altitude</span><span>\${fmt(d.altitude,1)} km</span><span>speed</span><span>\${fmt(d.velocity,0)} km/h</span><span>side</span><span>\${esc(d.visibility)}</span></div>
-  <div class="viz" style="min-height:0"><svg class="map" viewBox="0 0 300 96" preserveAspectRatio="none">\${grid}<line x1="0" y1="48" x2="300" y2="48" stroke="#2a3846"/><path d="\${path}" fill="none" stroke="#b98bff" stroke-width="1.5" vector-effect="non-scaling-stroke" opacity=".7"/><circle cx="\${X(d.longitude)}" cy="\${Y(d.latitude)}" r="4" fill="#b98bff"/></svg><div class="mut" style="font-size:11px">trail since page opened · equirectangular grid</div></div>\`;
-  if(n++%6===0)hit('iss',\`🛰 ISS \${fmt(d.latitude,1)}°, \${fmt(d.longitude,1)}°\`,\`wheretheiss 25544 lat=\${d.latitude.toFixed(3)} lon=\${d.longitude.toFixed(3)}\`);
+  const grid=[...Array(11)].map((_,i)=>`<line x1="${i*30}" y1="0" x2="${i*30}" y2="96" stroke="#1c2733"/>`).join('')+[...Array(5)].map((_,i)=>`<line x1="0" y1="${i*24}" x2="300" y2="${i*24}" stroke="#1c2733"/>`).join('');
+  $('b-iss').innerHTML=`<div class="kv"><span>lat / lon</span><span>${fmt(d.latitude,2)}°, ${fmt(d.longitude,2)}°</span><span>altitude</span><span>${fmt(d.altitude,1)} km</span><span>speed</span><span>${fmt(d.velocity,0)} km/h</span><span>side</span><span>${esc(d.visibility)}</span></div>
+  <div class="viz" style="min-height:0"><svg class="map" viewBox="0 0 300 96" preserveAspectRatio="none">${grid}<line x1="0" y1="48" x2="300" y2="48" stroke="#2a3846"/><path d="${path}" fill="none" stroke="#b98bff" stroke-width="1.5" vector-effect="non-scaling-stroke" opacity=".7"/><circle cx="${X(d.longitude)}" cy="${Y(d.latitude)}" r="4" fill="#b98bff"/></svg><div class="mut" style="font-size:11px">trail since page opened · equirectangular grid</div></div>`;
+  if(n++%6===0)hit('iss',`🛰 ISS ${fmt(d.latitude,1)}°, ${fmt(d.longitude,1)}°`,`wheretheiss 25544 lat=${d.latitude.toFixed(3)} lon=${d.longitude.toFixed(3)}`);
   else{total++;buckets[59]++;fire(4)}
  });
 }
@@ -241,9 +239,9 @@ function spark(vals,color){if(vals.length<2)return'';const mn=Math.min(...vals),
   const ev=await r.json();let fresh=[];
   for(const e of ev){if(seen.has(e.id))continue;seen.add(e.id);fresh.push(e);const t=e.type.replace('Event','');types[t]=(types[t]||0)+1}
   const top=Object.entries(types).sort((a,b)=>b[1]-a[1]).slice(0,4),mx=top[0]?.[1]||1;
-  $('b-gh').innerHTML=\`<div class="big">\${fmt(seen.size)}</div><div class="mut">public events seen · left \${esc(r.headers.get('x-ratelimit-remaining')??'?')} calls/hr</div>
-  <div class="viz">\${top.map(([t,c])=>\`<div class="row"><span>\${esc(t)}</span><span>\${c}</span></div><div class="bar"><i style="width:\${c/mx*100}%;background:#38d98a"></i></div>\`).join('')}</div>\`;
-  fresh.slice(0,8).forEach((e,i)=>setTimeout(()=>hit('gh',\`⌥ \${e.type.replace('Event','')} · \${e.repo.name}\`,\`github \${e.type} \${e.repo.name} by \${e.actor.login}\`),i*1800));
+  $('b-gh').innerHTML=`<div class="big">${fmt(seen.size)}</div><div class="mut">public events seen · left ${esc(r.headers.get('x-ratelimit-remaining')??'?')} calls/hr</div>
+  <div class="viz">${top.map(([t,c])=>`<div class="row"><span>${esc(t)}</span><span>${c}</span></div><div class="bar"><i style="width:${c/mx*100}%;background:#38d98a"></i></div>`).join('')}</div>`;
+  fresh.slice(0,8).forEach((e,i)=>setTimeout(()=>hit('gh',`⌥ ${e.type.replace('Event','')} · ${e.repo.name}`,`github ${e.type} ${e.repo.name} by ${e.actor.login}`),i*1800));
  });
 }
 
@@ -260,7 +258,7 @@ function draw(){
  if(W){ctx.clearRect(0,0,W,H);ctx.strokeStyle='#1c2733';ctx.beginPath();ctx.moveTo(28,0);ctx.lineTo(28,H);ctx.stroke();
  for(const g of wires)for(const w of g){ctx.strokeStyle=SRC[w.ci].c+'30';ctx.beginPath();ctx.moveTo(48,w.n.y);ctx.bezierCurveTo(W*.55,w.n.y,W*.55,w.ty,W,w.ty);ctx.stroke()}
  ctx.font='9px JetBrains Mono, monospace';ctx.textAlign='center';ctx.textBaseline='middle';
- for(const n of nodes){n.lit*=.96;ctx.fillStyle=n.lit>.1?\`rgba(56,217,138,\${n.lit})\`:'#0c1117';ctx.strokeStyle='#2a3846';ctx.fillRect(10,n.y-7,36,14);ctx.strokeRect(10.5,n.y-6.5,35,13);ctx.fillStyle=n.lit>.5?'#03140b':'#8aa0b4';ctx.fillText(n.n,28,n.y)}
+ for(const n of nodes){n.lit*=.96;ctx.fillStyle=n.lit>.1?`rgba(56,217,138,${n.lit})`:'#0c1117';ctx.strokeStyle='#2a3846';ctx.fillRect(10,n.y-7,36,14);ctx.strokeRect(10.5,n.y-6.5,35,13);ctx.fillStyle=n.lit>.5?'#03140b':'#8aa0b4';ctx.fillText(n.n,28,n.y)}
  parts=parts.filter(p=>(p.p+=p.v)<1);
  for(const p of parts){const w=p.w,u=p.p,c1=W*.55,y0=w.n.y,y3=w.ty;
   const x=(1-u)**3*48+3*(1-u)**2*u*c1+3*(1-u)*u**2*c1+u**3*W,y=(1-u)**3*y0+3*(1-u)**2*u*y0+3*(1-u)*u**2*y3+u**3*y3;
@@ -273,15 +271,3 @@ requestAnimationFrame(draw);
 </script>
 </body>
 </html>
-`;
-
-export default {
-  async fetch(request) {
-    return new Response(HTML, {
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-cache"
-      }
-    });
-  }
-};
